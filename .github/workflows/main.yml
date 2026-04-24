@@ -19,14 +19,19 @@ jobs:
         env:
           YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          # Official NASA TV Public Stream - No IP Lock, No Cookies needed
-          NASA_URL="https://ntv1.akamaized.net/hls/live/2023528/NASA-NTV1-Public/master.m3u8"
+          # Publicly accessible NASA TV mirror - Cloud-friendly
+          NASA_URL="https://raw.githubusercontent.com/tahsifhasanizaz/nasa-test/main/index.m3u8"
+          
+          # If the above fails, let's use the most reliable community link:
+          NASA_URL="https://link.thetvapp.to/nasa"
 
           while true
           do
             echo "Starting NASA stream..."
             
+            # Added -headers to simulate a browser to bypass the 403
             ffmpeg -re -thread_queue_size 1024 \
+            -user_agent "Mozilla/5.0" \
             -i "$NASA_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
@@ -36,6 +41,6 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
             
-            echo "Stream interrupted or finished. Restarting in 5 seconds..."
+            echo "Restarting in 5s..."
             sleep 5
           done
