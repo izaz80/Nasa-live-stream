@@ -1,11 +1,7 @@
 name: 6-Hour NASA Stream
 
 on:
-  workflow_dispatch:
-    inputs:
-      nasa_m3u8:
-        description: 'Paste the M3U8 link from Termux here'
-        required: true
+  workflow_dispatch: # No inputs needed anymore!
 
 jobs:
   stream:
@@ -18,6 +14,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install ffmpeg -y
+          pip install yt-dlp
 
       - name: Create Cookie File
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
@@ -25,14 +22,16 @@ jobs:
       - name: Start Streaming
         env:
           YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-          NASA_URL: ${{ github.event.inputs.nasa_m3u8 }}
         run: |
           while true
           do
+            echo "Fetching fresh authorized URL using cookies..."
+            # GitHub now fetches its own link authorized for its own IP
+            NASA_URL=$(yt-dlp --cookies cookies.txt -g -f "best[height<=720]" "https://www.youtube.com/watch?v=zPH5KtjJFaQ")
+            
             ffmpeg -re -thread_queue_size 1024 \
             -cookies "cookies.txt" \
             -user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-            -headers "Referer: https://www.youtube.com/" \
             -i "$NASA_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
@@ -42,6 +41,6 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
             
-            echo "Stream interrupted. Waiting to restart..."
+            echo "Stream dropped. Restarting in 5 seconds..."
             sleep 5
           done
