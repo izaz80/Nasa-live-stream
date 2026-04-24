@@ -19,15 +19,21 @@ jobs:
           sudo apt update
           sudo apt install ffmpeg -y
 
+      - name: Create Cookie File
+        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+
       - name: Start Streaming
         env:
           YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           NASA_URL: ${{ github.event.inputs.nasa_m3u8 }}
         run: |
-          # The loop ensures that if the stream drops, it restarts immediately
           while true
           do
-            ffmpeg -re -thread_queue_size 512 -i "$NASA_URL" \
+            ffmpeg -re -thread_queue_size 1024 \
+            -cookies "cookies.txt" \
+            -user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            -headers "Referer: https://www.youtube.com/" \
+            -i "$NASA_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
             -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
@@ -36,6 +42,6 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
             
-            echo "Stream crashed. Restarting..."
-            sleep 2
+            echo "Stream interrupted. Waiting to restart..."
+            sleep 5
           done
