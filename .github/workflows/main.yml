@@ -1,7 +1,7 @@
 name: 6-Hour NASA Stream
 
 on:
-  workflow_dispatch: # No inputs needed anymore!
+  workflow_dispatch:
 
 jobs:
   stream:
@@ -10,11 +10,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Tools
+      - name: Install Tools & JS Runtime
         run: |
           sudo apt update
-          sudo apt install ffmpeg -y
-          pip install yt-dlp
+          sudo apt install ffmpeg nodejs -y
+          python3 -m pip install -U pip
+          python3 -m pip install -U yt-dlp
 
       - name: Create Cookie File
         run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
@@ -25,9 +26,11 @@ jobs:
         run: |
           while true
           do
-            echo "Fetching fresh authorized URL using cookies..."
-            # GitHub now fetches its own link authorized for its own IP
-            NASA_URL=$(yt-dlp --cookies cookies.txt -g -f "best[height<=720]" "https://www.youtube.com/watch?v=zPH5KtjJFaQ")
+            echo "Fetching fresh authorized URL..."
+            # Added --extractor-args to help solve the signature challenge
+            NASA_URL=$(yt-dlp --cookies cookies.txt \
+              --extractor-args "youtube:player-client=web" \
+              -g -f "best[height<=720]" "https://www.youtube.com/watch?v=zPH5KtjJFaQ")
             
             ffmpeg -re -thread_queue_size 1024 \
             -cookies "cookies.txt" \
@@ -41,6 +44,6 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
             
-            echo "Stream dropped. Restarting in 5 seconds..."
+            echo "Stream dropped. Restarting..."
             sleep 5
           done
