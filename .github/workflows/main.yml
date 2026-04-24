@@ -2,6 +2,10 @@ name: 6-Hour NASA Stream
 
 on:
   workflow_dispatch:
+    inputs:
+      nasa_m3u8:
+        description: 'Paste the M3U8 link from Termux here'
+        required: true
 
 jobs:
   stream:
@@ -10,40 +14,24 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Tools & JS Runtime
+      - name: Install FFmpeg
         run: |
           sudo apt update
-          sudo apt install ffmpeg nodejs -y
-          python3 -m pip install -U pip
-          python3 -m pip install -U yt-dlp
-
-      - name: Create Cookie File
-        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+          sudo apt install ffmpeg -y
 
       - name: Start Streaming
         env:
           YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          NASA_URL: ${{ github.event.inputs.nasa_m3u8 }}
         run: |
-          while true
-          do
-            echo "Fetching fresh authorized URL..."
-            # Added --extractor-args to help solve the signature challenge
-            NASA_URL=$(yt-dlp --cookies cookies.txt \
-              --extractor-args "youtube:player-client=web" \
-              -g -f "best[height<=720]" "https://www.youtube.com/watch?v=zPH5KtjJFaQ")
-            
-            ffmpeg -re -thread_queue_size 1024 \
-            -cookies "cookies.txt" \
-            -user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-            -i "$NASA_URL" \
-            -stream_loop -1 -i Audio01.mp3 \
-            -i overlay.png \
-            -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
-            -map "[outv]" -map 1:a \
-            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k -maxrate 2500k -bufsize 4000k \
-            -c:a aac -b:a 128k -ar 44100 \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
-            
-            echo "Stream dropped. Restarting..."
-            sleep 5
-          done
+          # We use -reconnect flags to bypass the 403 Forbidden issue
+          ffmpeg -re -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2000 \
+          -user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+          -i "$NASA_URL" \
+          -stream_loop -1 -i Audio01.mp3 \
+          -i overlay.png \
+          -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
+          -map "[outv]" -map 1:a \
+          -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k -maxrate 2500k -bufsize 4000k \
+          -c:a aac -b:a 128k -ar 44100 \
+          -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
