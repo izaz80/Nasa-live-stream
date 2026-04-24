@@ -22,12 +22,11 @@ jobs:
       - name: Start Streaming
         env:
           YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-          NASA_URL: ${{ github.event.inputs.nasa_m3u8 }}
         run: |
-          # We use -reconnect flags to bypass the 403 Forbidden issue
-          ffmpeg -re -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2000 \
-          -user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
-          -i "$NASA_URL" \
+          # Official NASA TV Public Stream (HLS) - No IP Lock!
+          NASA_URL="https://ntv1.akamaized.net/hls/live/2023528/NASA-NTV1-Public/master.m3u8"
+
+          ffmpeg -re -i "$NASA_URL" \
           -stream_loop -1 -i Audio01.mp3 \
           -i overlay.png \
           -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
