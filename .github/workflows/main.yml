@@ -1,7 +1,11 @@
 name: 6-Hour NASA Stream
 
 on:
-  workflow_dispatch: # Allows manual start
+  workflow_dispatch:
+    inputs:
+      nasa_m3u8:
+        description: 'Paste the M3U8 link from Termux here'
+        required: true
 
 jobs:
   stream:
@@ -14,20 +18,24 @@ jobs:
         run: |
           sudo apt update
           sudo apt install ffmpeg -y
-          pip install yt-dlp
 
       - name: Start Streaming
         env:
           YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          NASA_URL: ${{ github.event.inputs.nasa_m3u8 }}
         run: |
-          # We use a piped command to get the link without triggering the bot check
-          NASA_URL=$(yt-dlp --no-check-certificate -g "https://www.youtube.com/watch?v=zPH5KtjJFaQ")
-          
-          ffmpeg -re -i "$NASA_URL" \
-          -stream_loop -1 -i Audio01.mp3 \
-          -i overlay.png \
-          -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
-          -map "[outv]" -map 1:a \
-          -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
-          -c:a aac -b:a 128k -ar 44100 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
+          # The loop ensures that if the stream drops, it restarts immediately
+          while true
+          do
+            ffmpeg -re -thread_queue_size 512 -i "$NASA_URL" \
+            -stream_loop -1 -i Audio01.mp3 \
+            -i overlay.png \
+            -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
+            -map "[outv]" -map 1:a \
+            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k -maxrate 2500k -bufsize 4000k \
+            -c:a aac -b:a 128k -ar 44100 \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
+            
+            echo "Stream crashed. Restarting..."
+            sleep 2
+          done
