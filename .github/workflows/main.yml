@@ -1,11 +1,7 @@
 name: 6-Hour NASA Stream
 
 on:
-  workflow_dispatch:
-    inputs:
-      nasa_m3u8:
-        description: 'Paste the M3U8 link from Termux here'
-        required: true
+  workflow_dispatch: # Starts the stream when you click the button
 
 jobs:
   stream:
@@ -23,14 +19,23 @@ jobs:
         env:
           YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          # Official NASA TV Public Stream (HLS) - No IP Lock!
+          # Official NASA TV Public Stream - No IP Lock, No Cookies needed
           NASA_URL="https://ntv1.akamaized.net/hls/live/2023528/NASA-NTV1-Public/master.m3u8"
 
-          ffmpeg -re -i "$NASA_URL" \
-          -stream_loop -1 -i Audio01.mp3 \
-          -i overlay.png \
-          -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
-          -map "[outv]" -map 1:a \
-          -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k -maxrate 2500k -bufsize 4000k \
-          -c:a aac -b:a 128k -ar 44100 \
-          -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
+          while true
+          do
+            echo "Starting NASA stream..."
+            
+            ffmpeg -re -thread_queue_size 1024 \
+            -i "$NASA_URL" \
+            -stream_loop -1 -i Audio01.mp3 \
+            -i overlay.png \
+            -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
+            -map "[outv]" -map 1:a \
+            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k -maxrate 2500k -bufsize 4000k \
+            -c:a aac -b:a 128k -ar 44100 \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
+            
+            echo "Stream interrupted or finished. Restarting in 5 seconds..."
+            sleep 5
+          done
