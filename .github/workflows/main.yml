@@ -24,13 +24,12 @@ jobs:
         run: |
           while true
           do
-            echo "Waiting for phone to sync..."
-            sleep 5
+            echo "Syncing with NASA Data Bridge..."
             
-            # -reconnect flags help if the file is temporarily locked
-            ffmpeg -re -stream_loop -1 \
+            # -stream_loop -1: Loops the file so GitHub never stops
+            # -fflags +genpts: Regenerates timestamps so 'frame=0' becomes 'frame=1, 2, 3...'
+            ffmpeg -re -stream_loop -1 -fflags +genpts \
             -headers "Bypass-Tunnel-Reminder: true" \
-            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 \
             -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
@@ -40,5 +39,6 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
             
-            echo "Restarting stream cycle..."
+            echo "Stream cycle reset. Retrying..."
+            sleep 2
           done
