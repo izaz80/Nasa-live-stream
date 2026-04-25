@@ -24,14 +24,12 @@ jobs:
         run: |
           while true
           do
-            echo "Attempting to handshake with Phone..."
+            echo "Grabbing current video chunk from phone..."
             
-            # We use -vstats to see exactly what is happening
-            # We add -reconnect flags to the input itself
-            ffmpeg -re \
+            # We add -stream_loop -1 so if the file is tiny, it doesn't stop
+            ffmpeg -re -stream_loop -1 \
             -headers "Bypass-Tunnel-Reminder: true" \
-            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2 \
-            -i "$TUNNEL_URL" \
+            -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
             -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
@@ -40,6 +38,6 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
             
-            echo "Connection dropped. Village internet might be flickering. Retrying..."
-            sleep 5
+            echo "Chunk finished or connection reset. Refreshing..."
+            sleep 2
           done
