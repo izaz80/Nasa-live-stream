@@ -1,7 +1,7 @@
 name: 6-Hour NASA Stream
 
 on:
-  workflow_dispatch: # Starts the stream when you click the button
+  workflow_dispatch:
 
 jobs:
   stream:
@@ -10,37 +10,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg
+      - name: Install "The Brain"
         run: |
           sudo apt update
-          sudo apt install ffmpeg -y
+          sudo apt install ffmpeg nodejs -y # Nodejs solves the YouTube puzzles
+          python3 -m pip install -U yt-dlp  # Ensures latest security bypass
+
+      - name: Create Cookie File
+        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
 
       - name: Start Streaming
         env:
-          YOUTUBE_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          # Publicly accessible NASA TV mirror - Cloud-friendly
-          NASA_URL="https://raw.githubusercontent.com/tahsifhasanizaz/nasa-test/main/index.m3u8"
+          YOUTUBE_URL="https://www.youtube.com/watch?v=zPH5KtjJFaQ"
           
-          # If the above fails, let's use the most reliable community link:
-          NASA_URL="https://link.thetvapp.to/nasa"
-
           while true
           do
-            echo "Starting NASA stream..."
-            
-            # Added -headers to simulate a browser to bypass the 403
-            ffmpeg -re -thread_queue_size 1024 \
-            -user_agent "Mozilla/5.0" \
-            -i "$NASA_URL" \
+            echo "Fetching URL using Cookies..."
+            # Added --cookies so YouTube thinks it is YOUR browser
+            NASA_URL=$(yt-dlp --cookies cookies.txt -g -f "best[height<=720]" "$YOUTUBE_URL")
+
+            ffmpeg -re -i "$NASA_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
             -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
             -map "[outv]" -map 1:a \
-            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k -maxrate 2500k -bufsize 4000k \
+            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
             -c:a aac -b:a 128k -ar 44100 \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/$YOUTUBE_KEY"
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
             
-            echo "Restarting in 5s..."
             sleep 5
           done
