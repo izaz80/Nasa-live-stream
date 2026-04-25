@@ -24,12 +24,13 @@ jobs:
         run: |
           while true
           do
-            echo "Blasting frames to YouTube..."
+            echo "Attempting to grab pulse from phone..."
             
-            # -fflags +nobuffer +genpts +igndts: Prevents the time-skip and data-clogging
-            # -r 30: Forces the output to be 30fps regardless of input
+            # -reconnect 1: Automatically reconnects if the tunnel hiccups
+            # -reconnect_streamed 1: Keeps the live feed alive
             ffmpeg -hide_banner -re \
             -headers "Bypass-Tunnel-Reminder: true" \
+            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 \
             -fflags +genpts+igndts+nobuffer \
             -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
@@ -42,6 +43,6 @@ jobs:
             -g 60 -r 30 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
 
-            echo "Sync lost. Restarting bridge..."
+            echo "Invalid Data or Connection Lost. Retrying in 5s..."
             sleep 5
           done
