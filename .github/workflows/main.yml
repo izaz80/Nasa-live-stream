@@ -24,11 +24,13 @@ jobs:
         run: |
           while true
           do
-            echo "Grabbing current video chunk from phone..."
+            echo "Waiting for phone to sync..."
+            sleep 5
             
-            # We add -stream_loop -1 so if the file is tiny, it doesn't stop
+            # -reconnect flags help if the file is temporarily locked
             ffmpeg -re -stream_loop -1 \
             -headers "Bypass-Tunnel-Reminder: true" \
+            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 \
             -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
@@ -38,6 +40,5 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
             
-            echo "Chunk finished or connection reset. Refreshing..."
-            sleep 2
+            echo "Restarting stream cycle..."
           done
