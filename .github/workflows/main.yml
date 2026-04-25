@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       phone_tunnel_url:
-        description: 'https://446c08be39ee5e80-103-94-216-64.serveousercontent.com'
+        description: 'Paste the Serveo URL (e.g., https://xxx.serveousercontent.com)'
         required: true
 
 jobs:
