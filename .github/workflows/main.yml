@@ -1,10 +1,10 @@
-name: 6-Hour NASA Stream via Phone Bridge
+name: 6-Hour NASA Stream - Final Boss Edition
 
 on:
   workflow_dispatch:
     inputs:
       phone_tunnel_url:
-        description: 'Paste the Serveo URL (e.g., https://xxx.serveousercontent.com)'
+        description: 'Paste your Serveo link (https://xxx.serveousercontent.com)'
         required: true
 
 jobs:
@@ -24,14 +24,13 @@ jobs:
         run: |
           while true
           do
-            echo "Fetching authorized link from Termux..."
-            # Bypass-Tunnel-Reminder header is required for Serveo free links
-            NASA_URL=$(curl -s -H "Bypass-Tunnel-Reminder: true" "$TUNNEL_URL/link.txt")
+            echo "Opening data pipe from phone tunnel..."
             
-            if [[ "$NASA_URL" == http* ]]; then
-              echo "Link received! Sending to YouTube..."
-              # GitHub connects to your phone's data pipe
-            ffmpeg -re -blocksize 1048576 -i "$TUNNEL_URL" \
+            # -headers is used to skip the Serveo warning page
+            # -blocksize helps stabilize the connection from your village ISP
+            ffmpeg -re -blocksize 1048576 \
+            -headers "Bypass-Tunnel-Reminder: true" \
+            -i "$TUNNEL_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
             -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
@@ -39,3 +38,7 @@ jobs:
             -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+            
+            echo "Pipe interrupted. Reconnecting in 10s..."
+            sleep 10
+          done
