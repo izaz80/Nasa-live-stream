@@ -1,4 +1,4 @@
-name: NASA Live Stream - Nuclear Edition
+name: NASA Live Stream - Master Pulse Edition
 
 on:
   workflow_dispatch:
@@ -24,26 +24,24 @@ jobs:
         run: |
           while true
           do
-            echo "Forcing Live Stream Synchronization..."
+            echo "Forcing Frame Generation Pulse..."
             
-            # 1. We remove -stream_loop from the video input to prevent the 9-hour jump
-            # 2. We use -fflags +nobuffer to prevent GitHub from 'speeding up'
-            # 3. We use -shortest to ensure the stream stays synced to the video
+            # -fflags +nobuffer: Forces data through immediately
+            # -re: Forces 1x speed
+            # fps=30: Forcibly creates 30 frames per second to stop the 'frame=1' hang
             ffmpeg -hide_banner -re \
             -headers "Bypass-Tunnel-Reminder: true" \
             -fflags +genpts+igndts+nobuffer \
-            -f mpegts \
             -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
-            -filter_complex "[0:v]scale=1280:720,setpts=PTS-STARTPTS[bg]; [2:v]scale=1280:720[fg]; [bg][fg]overlay=0:0:shortest=1[outv]" \
+            -filter_complex "[0:v]fps=30,scale=1280:720,setpts=PTS-STARTPTS[bg]; [2:v]scale=1280:720[fg]; [bg][fg]overlay=0:0:shortest=1[outv]" \
             -map "[outv]" -map 1:a \
             -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
-            -b:v 2500k -minrate 2500k -maxrate 2500k -bufsize 5000k \
+            -b:v 2500k -maxrate 2500k -bufsize 5000k \
             -c:a aac -b:a 128k -ar 44100 \
-            -g 60 -r 30 \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+            -g 60 -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
 
-            echo "Bridge dropped. Retrying in 5s..."
+            echo "Pulse lost. Syncing in 5s..."
             sleep 5
           done
