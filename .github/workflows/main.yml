@@ -1,4 +1,4 @@
-name: 6-Hour NASA Stream - Final Boss Edition
+name: NASA Live Stream - Master Edition
 
 on:
   workflow_dispatch:
@@ -22,23 +22,35 @@ jobs:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           TUNNEL_URL: ${{ github.event.inputs.phone_tunnel_url }}
         run: |
+          # Ensure inputs exist
+          if [ ! -f "Audio01.mp3" ] || [ ! -f "overlay.png" ]; then
+            echo "Error: Audio01.mp3 or overlay.png missing in repository!"
+            exit 1
+          fi
+
           while true
           do
-            echo "Syncing with NASA Data Bridge..."
+            echo "Handshaking with Phone Bridge at $TUNNEL_URL..."
             
-            # -stream_loop -1: Loops the file so GitHub never stops
-            # -fflags +genpts: Regenerates timestamps so 'frame=0' becomes 'frame=1, 2, 3...'
-            ffmpeg -re -stream_loop -1 -fflags +genpts \
+            # 1. -re MUST be the very first flag to force 1x speed
+            # 2. -f mpegts forces the decoder to stop 'guessing'
+            # 3. +igndts tells FFmpeg to ignore the broken time from the phone and make its own
+            ffmpeg -hide_banner -re \
             -headers "Bypass-Tunnel-Reminder: true" \
+            -fflags +genpts+igndts \
+            -f mpegts \
             -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
             -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
-            -map "[outv]" -map 1:a \
-            -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -b:v 2500k \
+            -map "[outv]" \
+            -map 1:a \
+            -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p \
+            -b:v 2500k -maxrate 2500k -bufsize 5000k \
             -c:a aac -b:a 128k -ar 44100 \
+            -g 60 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
-            
-            echo "Stream cycle reset. Retrying..."
-            sleep 2
+
+            echo "Connection reset. Restarting pipe in 5 seconds..."
+            sleep 5
           done
