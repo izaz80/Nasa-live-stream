@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       phone_tunnel_url:
-        description: 'Paste your Serveo link (https://xxx.serveousercontent.com)'
+        description: 'Paste your Serveo link'
         required: true
 
 jobs:
@@ -22,35 +22,29 @@ jobs:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           TUNNEL_URL: ${{ github.event.inputs.phone_tunnel_url }}
         run: |
-          # Ensure inputs exist
-          if [ ! -f "Audio01.mp3" ] || [ ! -f "overlay.png" ]; then
-            echo "Error: Audio01.mp3 or overlay.png missing in repository!"
-            exit 1
-          fi
-
           while true
           do
-            echo "Handshaking with Phone Bridge at $TUNNEL_URL..."
+            echo "Forcing Wallclock Sync..."
             
-            # 1. -re MUST be the very first flag to force 1x speed
-            # 2. -f mpegts forces the decoder to stop 'guessing'
-            # 3. +igndts tells FFmpeg to ignore the broken time from the phone and make its own
-            ffmpeg -hide_banner -re \
+            # 1. -fflags +genpts+igndts: Throws away the '01:11:14' time and starts at 0
+            # 2. -use_wallclock_as_timestamps 1: Forces the stream to follow GitHub's clock
+            # 3. -thread_queue_size 1024: Prevents the 'Speed=75x' by buffering the input
+            ffmpeg -hide_banner \
             -headers "Bypass-Tunnel-Reminder: true" \
             -fflags +genpts+igndts \
-            -f mpegts \
+            -use_wallclock_as_timestamps 1 \
+            -thread_queue_size 1024 \
             -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
             -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
-            -map "[outv]" \
-            -map 1:a \
+            -map "[outv]" -map 1:a \
             -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p \
             -b:v 2500k -maxrate 2500k -bufsize 5000k \
             -c:a aac -b:a 128k -ar 44100 \
-            -g 60 \
+            -g 60 -r 30 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
 
-            echo "Connection reset. Restarting pipe in 5 seconds..."
-            sleep 5
+            echo "Sync lost. Re-establishing bridge..."
+            sleep 3
           done
