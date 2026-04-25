@@ -1,7 +1,11 @@
-name: 6-Hour NASA Stream
+name: 6-Hour NASA Stream via Phone Bridge
 
 on:
   workflow_dispatch:
+    inputs:
+      phone_tunnel_url:
+        description: 'Paste the Serveo URL (e.g., https://xxx.serveousercontent.com)'
+        required: true
 
 jobs:
   stream:
@@ -10,35 +14,35 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install "The Brain"
-        run: |
-          sudo apt update
-          sudo apt install ffmpeg nodejs -y # Nodejs solves the YouTube puzzles
-          python3 -m pip install -U yt-dlp  # Ensures latest security bypass
-
-      - name: Create Cookie File
-        run: echo "${{ secrets.YOUTUBE_COOKIES }}" > cookies.txt
+      - name: Install FFmpeg
+        run: sudo apt update && sudo apt install ffmpeg -y
 
       - name: Start Streaming
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          TUNNEL_URL: ${{ github.event.inputs.phone_tunnel_url }}
         run: |
-          YOUTUBE_URL="https://www.youtube.com/watch?v=zPH5KtjJFaQ"
-          
           while true
           do
-            echo "Fetching URL using Cookies..."
-            # Added --cookies so YouTube thinks it is YOUR browser
-            NASA_URL=$(yt-dlp --cookies cookies.txt -g -f "best[height<=720]" "$YOUTUBE_URL")
-
-            ffmpeg -re -i "$NASA_URL" \
-            -stream_loop -1 -i Audio01.mp3 \
-            -i overlay.png \
-            -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
-            -map "[outv]" -map 1:a \
-            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
-            -c:a aac -b:a 128k -ar 44100 \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+            echo "Fetching authorized link from Termux..."
+            # Bypass-Tunnel-Reminder header is required for Serveo free links
+            NASA_URL=$(curl -s -H "Bypass-Tunnel-Reminder: true" "$TUNNEL_URL/link.txt")
             
-            sleep 5
+            if [[ "$NASA_URL" == http* ]]; then
+              echo "Link received! Sending to YouTube..."
+              ffmpeg -re -i "$NASA_URL" \
+              -stream_loop -1 -i Audio01.mp3 \
+              -i overlay.png \
+              -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
+              -map "[outv]" -map 1:a \
+              -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
+              -c:a aac -b:a 128k -ar 44100 \
+              -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+            else
+              echo "Error: Received invalid data from tunnel. Check Termux!"
+              echo "Data received: $NASA_URL"
+            fi
+            
+            echo "Restarting in 15 seconds..."
+            sleep 15
           done
