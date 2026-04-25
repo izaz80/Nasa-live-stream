@@ -24,22 +24,20 @@ jobs:
         run: |
           while true
           do
-            echo "Opening data pipe from phone tunnel..."
+            echo "Receiving Clean Pipe..."
             
-            # Use standard reconnect flags instead of blocksize
-            # The headers must come before the -i
+            # -probesize and -analyzeduration give FFmpeg time to understand the video
             ffmpeg -re \
             -headers "Bypass-Tunnel-Reminder: true" \
-            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
+            -probesize 10M -analyzeduration 10M \
             -i "$TUNNEL_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
             -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
             -map "[outv]" -map 1:a \
-            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
+            -c:v libx264 -preset ultrafast -tune stillimage -pix_fmt yuv420p -b:v 2500k \
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
             
-            echo "Pipe interrupted. Reconnecting in 10s..."
-            sleep 10
+            sleep 5
           done
