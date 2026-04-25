@@ -24,12 +24,13 @@ jobs:
         run: |
           while true
           do
-            echo "Receiving Clean Pipe..."
+            echo "Connecting to Phone Bridge..."
             
-            # -probesize and -analyzeduration give FFmpeg time to understand the video
-            ffmpeg -re \
+            # -f mpegts forces FFmpeg to treat the input as a stream
+            # -fflags +genpts fixes the timing issues that cause frame=0
+            ffmpeg -re -f mpegts \
             -headers "Bypass-Tunnel-Reminder: true" \
-            -probesize 10M -analyzeduration 10M \
+            -fflags +genpts+igndts \
             -i "$TUNNEL_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
