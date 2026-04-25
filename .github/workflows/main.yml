@@ -24,13 +24,13 @@ jobs:
         run: |
           while true
           do
-            echo "Connecting to Phone Bridge..."
+            echo "Attempting to handshake with Phone..."
             
-            # -f mpegts forces FFmpeg to treat the input as a stream
-            # -fflags +genpts fixes the timing issues that cause frame=0
-            ffmpeg -re -f mpegts \
+            # We use -vstats to see exactly what is happening
+            # We add -reconnect flags to the input itself
+            ffmpeg -re \
             -headers "Bypass-Tunnel-Reminder: true" \
-            -fflags +genpts+igndts \
+            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 2 \
             -i "$TUNNEL_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
@@ -40,5 +40,6 @@ jobs:
             -c:a aac -b:a 128k -ar 44100 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
             
+            echo "Connection dropped. Village internet might be flickering. Retrying..."
             sleep 5
           done
