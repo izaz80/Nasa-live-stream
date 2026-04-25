@@ -26,10 +26,11 @@ jobs:
           do
             echo "Opening data pipe from phone tunnel..."
             
-            # -headers is used to skip the Serveo warning page
-            # -blocksize helps stabilize the connection from your village ISP
-            ffmpeg -re -blocksize 1048576 \
+            # Use standard reconnect flags instead of blocksize
+            # The headers must come before the -i
+            ffmpeg -re \
             -headers "Bypass-Tunnel-Reminder: true" \
+            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 -reconnect_delay_max 5 \
             -i "$TUNNEL_URL" \
             -stream_loop -1 -i Audio01.mp3 \
             -i overlay.png \
