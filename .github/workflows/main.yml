@@ -30,19 +30,12 @@ jobs:
             
             if [[ "$NASA_URL" == http* ]]; then
               echo "Link received! Sending to YouTube..."
-              ffmpeg -re -i "$NASA_URL" \
-              -stream_loop -1 -i Audio01.mp3 \
-              -i overlay.png \
-              -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
-              -map "[outv]" -map 1:a \
-              -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
-              -c:a aac -b:a 128k -ar 44100 \
-              -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
-            else
-              echo "Error: Received invalid data from tunnel. Check Termux!"
-              echo "Data received: $NASA_URL"
-            fi
-            
-            echo "Restarting in 15 seconds..."
-            sleep 15
-          done
+              # GitHub connects to your phone's data pipe
+            ffmpeg -re -blocksize 1048576 -i "$TUNNEL_URL" \
+            -stream_loop -1 -i Audio01.mp3 \
+            -i overlay.png \
+            -filter_complex "[0:v][2:v] overlay=0:0:shortest=1 [outv]" \
+            -map "[outv]" -map 1:a \
+            -c:v libx264 -preset ultrafast -tune stillimage -b:v 2000k \
+            -c:a aac -b:a 128k -ar 44100 \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
