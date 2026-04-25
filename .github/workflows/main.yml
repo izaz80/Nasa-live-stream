@@ -24,13 +24,13 @@ jobs:
         run: |
           while true
           do
-            echo "Attempting to grab pulse from phone..."
+            echo "Forcing Wallclock Synchronization..."
             
-            # -reconnect 1: Automatically reconnects if the tunnel hiccups
-            # -reconnect_streamed 1: Keeps the live feed alive
-            ffmpeg -hide_banner -re \
+            # -use_wallclock_as_timestamps 1: This is the KILL SWITCH for the 45x speed.
+            # -fflags +nobuffer: Ensures data isn't held in GitHub's RAM.
+            ffmpeg -hide_banner \
             -headers "Bypass-Tunnel-Reminder: true" \
-            -reconnect 1 -reconnect_at_eof 1 -reconnect_streamed 1 \
+            -use_wallclock_as_timestamps 1 \
             -fflags +genpts+igndts+nobuffer \
             -i "$TUNNEL_URL/video.ts" \
             -stream_loop -1 -i Audio01.mp3 \
@@ -43,6 +43,6 @@ jobs:
             -g 60 -r 30 \
             -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
 
-            echo "Invalid Data or Connection Lost. Retrying in 5s..."
+            echo "Sync Drift Detected. Resetting in 5s..."
             sleep 5
           done
