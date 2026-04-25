@@ -1,4 +1,4 @@
-name: NASA Live Stream - Master Pulse Edition
+name: NASA Live Stream - Frame-Blaster Edition
 
 on:
   workflow_dispatch:
@@ -24,11 +24,10 @@ jobs:
         run: |
           while true
           do
-            echo "Forcing Frame Generation Pulse..."
+            echo "Blasting frames to YouTube..."
             
-            # -fflags +nobuffer: Forces data through immediately
-            # -re: Forces 1x speed
-            # fps=30: Forcibly creates 30 frames per second to stop the 'frame=1' hang
+            # -fflags +nobuffer +genpts +igndts: Prevents the time-skip and data-clogging
+            # -r 30: Forces the output to be 30fps regardless of input
             ffmpeg -hide_banner -re \
             -headers "Bypass-Tunnel-Reminder: true" \
             -fflags +genpts+igndts+nobuffer \
@@ -40,8 +39,9 @@ jobs:
             -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
             -b:v 2500k -maxrate 2500k -bufsize 5000k \
             -c:a aac -b:a 128k -ar 44100 \
-            -g 60 -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+            -g 60 -r 30 \
+            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
 
-            echo "Pulse lost. Syncing in 5s..."
+            echo "Sync lost. Restarting bridge..."
             sleep 5
           done
