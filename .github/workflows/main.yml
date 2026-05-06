@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       youtube_url:
-        description: 'NASA YouTube live URL (e.g. https://www.youtube.com/watch?v=xxx)'
+        description: 'NASA YouTube live URL'
         required: true
         default: 'https://www.youtube.com/watch?v=uwXgcTc8oY8'
 
@@ -20,16 +20,78 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg python3-pip
+          sudo apt-get install -y ffmpeg
+
+          # Install Node.js properly via NodeSource
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+
+          # Verify node works
+          node --version
+          npm --version
+
+          # Install yt-dlp
           pip3 install -q yt-dlp
 
-      - name: Debug with cookies
+          # Install yt-dlp's JS dependency
+          pip3 install -q yt-dlp[default]
+          
+      - name: Write cookies file
         env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          echo "$YOUTUBE_COOKIES" > /tmp/cookies.txt  
+
+      - name: Stream to YouTube
+        env:
+          STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           SOURCE_URL: ${{ github.event.inputs.youtube_url }}
         run: |
-          yt-dlp \
-            --cookies /tmp/cookies.txt \
-            --extractor-args "youtube:player_client=web" \
-            --get-url \
-            --verbose \
-            "$SOURCE_URL"
+          get_stream_url() {
+            yt-dlp \
+              --no-warnings \
+              --cookies /tmp/cookies.txt \
+              --extractor-args "youtube:player_client=web" \
+              -f "best[height<=720]/bestvideo[height<=720]+bestaudio" \
+              --get-url \
+              "$SOURCE_URL" 2>/dev/null | head -1
+          }
+
+          while true; do
+            echo "=== Fetching fresh stream URL ==="
+            STREAM_URL=$(get_stream_url)
+
+            if [ -z "$STREAM_URL" ]; then
+              echo "Failed to get stream URL, retrying in 10s..."
+              sleep 10
+              continue
+            fi
+
+            echo "=== Got URL, starting FFmpeg ==="
+
+            ffmpeg -hide_banner -loglevel warning \
+              -re \
+              -fflags +nobuffer+discardcorrupt \
+              -flags low_delay \
+              -i "$STREAM_URL" \
+              -filter_complex "
+                [0:v]fps=30,
+                scale=1280:720,
+                drawtext=text='NASA Live':
+                  fontcolor=white:fontsize=24:
+                  x=10:y=10:
+                  box=1:boxcolor=black@0.4:boxborderw=5,
+                setpts=PTS-STARTPTS[outv]
+              " \
+              -map "[outv]" \
+              -map 0:a \
+              -c:v libx264 -preset veryfast -tune zerolatency \
+              -pix_fmt yuv420p \
+              -b:v 2500k -maxrate 3000k -bufsize 6000k \
+              -c:a aac -b:a 128k -ar 44100 \
+              -g 60 -r 30 \
+              -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+
+            echo "=== FFmpeg exited, refreshing in 5s ==="
+            sleep 5
+          done
