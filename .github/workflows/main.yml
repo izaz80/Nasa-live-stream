@@ -23,16 +23,13 @@ jobs:
           sudo apt-get install -y ffmpeg python3-pip
           pip3 install -q yt-dlp
 
-      - name: Debug Stream URL
+      - name: Debug with cookies
         env:
           SOURCE_URL: ${{ github.event.inputs.youtube_url }}
         run: |
-          echo "=== yt-dlp version ==="
-          yt-dlp --version
-
-          echo "=== Trying to get URL (verbose) ==="
           yt-dlp \
-            -f "bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720]" \
+            --cookies /tmp/cookies.txt \
+            --extractor-args "youtube:player_client=web" \
             --get-url \
             --verbose \
             "$SOURCE_URL"
