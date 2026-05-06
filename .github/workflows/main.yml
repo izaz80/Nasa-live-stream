@@ -1,48 +1,76 @@
-name: NASA Live Stream - Frame-Blaster Edition
+name: NASA Live Stream
 
 on:
   workflow_dispatch:
     inputs:
-      phone_tunnel_url:
-        description: 'Paste your Serveo link'
+      youtube_url:
+        description: 'NASA YouTube live URL (e.g. https://www.youtube.com/watch?v=xxx)'
         required: true
+        default: 'https://www.youtube.com/watch?v=uwXgcTc8oY8'
 
 jobs:
   stream:
     runs-on: ubuntu-latest
+    timeout-minutes: 350
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install FFmpeg
-        run: sudo apt update && sudo apt install ffmpeg -y
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg python3-pip
+          pip3 install -q yt-dlp
 
-      - name: Start Streaming
+      - name: Stream to YouTube
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-          TUNNEL_URL: ${{ github.event.inputs.phone_tunnel_url }}
+          SOURCE_URL: ${{ github.event.inputs.youtube_url }}
         run: |
-          while true
-          do
-            echo "Forcing Wallclock Synchronization..."
-            
-            # -use_wallclock_as_timestamps 1: This is the KILL SWITCH for the 45x speed.
-            # -fflags +nobuffer: Ensures data isn't held in GitHub's RAM.
-            ffmpeg -hide_banner \
-            -headers "Bypass-Tunnel-Reminder: true" \
-            -use_wallclock_as_timestamps 1 \
-            -fflags +genpts+igndts+nobuffer \
-            -i "$TUNNEL_URL/video.ts" \
-            -stream_loop -1 -i Audio01.mp3 \
-            -i overlay.png \
-            -filter_complex "[0:v]fps=30,scale=1280:720,setpts=PTS-STARTPTS[bg]; [2:v]scale=1280:720[fg]; [bg][fg]overlay=0:0:shortest=1[outv]" \
-            -map "[outv]" -map 1:a \
-            -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p \
-            -b:v 2500k -maxrate 2500k -bufsize 5000k \
-            -c:a aac -b:a 128k -ar 44100 \
-            -g 60 -r 30 \
-            -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+          get_stream_url() {
+            yt-dlp \
+              --no-warnings \
+              -f "bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720]" \
+              --get-url \
+              "$SOURCE_URL" 2>/dev/null | head -1
+          }
 
-            echo "Sync Drift Detected. Resetting in 5s..."
+          while true; do
+            echo "=== Fetching fresh stream URL from GitHub runner ==="
+            STREAM_URL=$(get_stream_url)
+
+            if [ -z "$STREAM_URL" ]; then
+              echo "Failed to get stream URL, retrying in 10s..."
+              sleep 10
+              continue
+            fi
+
+            echo "=== Got URL, starting FFmpeg ==="
+
+            ffmpeg -hide_banner -loglevel warning \
+              -re \
+              -fflags +nobuffer+discardcorrupt \
+              -flags low_delay \
+              -i "$STREAM_URL" \
+              -filter_complex "
+                [0:v]fps=30,
+                scale=1280:720,
+                drawtext=text='NASA Live':
+                  fontcolor=white:fontsize=24:
+                  x=10:y=10:
+                  box=1:boxcolor=black@0.4:boxborderw=5,
+                setpts=PTS-STARTPTS[outv]
+              " \
+              -map "[outv]" \
+              -map 0:a \
+              -c:v libx264 -preset veryfast -tune zerolatency \
+              -pix_fmt yuv420p \
+              -b:v 2500k -maxrate 3000k -bufsize 6000k \
+              -c:a aac -b:a 128k -ar 44100 \
+              -g 60 -r 30 \
+              -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+
+            echo "=== FFmpeg exited, refreshing URL in 5s ==="
             sleep 5
           done
