@@ -23,54 +23,16 @@ jobs:
           sudo apt-get install -y ffmpeg python3-pip
           pip3 install -q yt-dlp
 
-      - name: Stream to YouTube
+      - name: Debug Stream URL
         env:
-          STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           SOURCE_URL: ${{ github.event.inputs.youtube_url }}
         run: |
-          get_stream_url() {
-            yt-dlp \
-              --no-warnings \
-              -f "bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720]" \
-              --get-url \
-              "$SOURCE_URL" 2>/dev/null | head -1
-          }
+          echo "=== yt-dlp version ==="
+          yt-dlp --version
 
-          while true; do
-            echo "=== Fetching fresh stream URL from GitHub runner ==="
-            STREAM_URL=$(get_stream_url)
-
-            if [ -z "$STREAM_URL" ]; then
-              echo "Failed to get stream URL, retrying in 10s..."
-              sleep 10
-              continue
-            fi
-
-            echo "=== Got URL, starting FFmpeg ==="
-
-            ffmpeg -hide_banner -loglevel warning \
-              -re \
-              -fflags +nobuffer+discardcorrupt \
-              -flags low_delay \
-              -i "$STREAM_URL" \
-              -filter_complex "
-                [0:v]fps=30,
-                scale=1280:720,
-                drawtext=text='NASA Live':
-                  fontcolor=white:fontsize=24:
-                  x=10:y=10:
-                  box=1:boxcolor=black@0.4:boxborderw=5,
-                setpts=PTS-STARTPTS[outv]
-              " \
-              -map "[outv]" \
-              -map 0:a \
-              -c:v libx264 -preset veryfast -tune zerolatency \
-              -pix_fmt yuv420p \
-              -b:v 2500k -maxrate 3000k -bufsize 6000k \
-              -c:a aac -b:a 128k -ar 44100 \
-              -g 60 -r 30 \
-              -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
-
-            echo "=== FFmpeg exited, refreshing URL in 5s ==="
-            sleep 5
-          done
+          echo "=== Trying to get URL (verbose) ==="
+          yt-dlp \
+            -f "bestvideo[height<=720][ext=mp4]+bestaudio/best[height<=720]" \
+            --get-url \
+            --verbose \
+            "$SOURCE_URL"
