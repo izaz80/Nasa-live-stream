@@ -1,17 +1,17 @@
-name: NASA Live Stream
+name: NASA Live Restream
 
 on:
   workflow_dispatch:
     inputs:
       youtube_url:
-        description: 'NASA YouTube live URL'
+        description: 'NASA YouTube live URL (e.g. https://www.youtube.com/watch?v=XXX)'
         required: true
         default: 'https://www.youtube.com/watch?v=uwXgcTc8oY8'
 
 jobs:
   stream:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 350  # Just under GitHub's 6hr limit
 
     steps:
       - name: Checkout
@@ -20,78 +20,77 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
-
-          # Install Node.js properly via NodeSource
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get install -y nodejs
-
-          # Verify node works
-          node --version
-          npm --version
-
-          # Install yt-dlp
+          sudo apt-get install -y ffmpeg python3-pip
           pip3 install -q yt-dlp
 
-          # Install yt-dlp's JS dependency
-          pip3 install -q yt-dlp[default]
-          
-      - name: Write cookies file
+      - name: Get stream URL
+        id: get_url
         env:
-          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+          YT_URL: ${{ github.event.inputs.youtube_url }}
         run: |
-          echo "$YOUTUBE_COOKIES" > /tmp/cookies.txt  
+          echo "Fetching fresh m3u8 from GitHub's IP..."
+          
+          # Get the best m3u8 URL directly (720p or best available)
+          STREAM_URL=$(yt-dlp \
+            --no-warnings \
+            -f "best[height<=720][protocol=m3u8_native]/best[protocol=m3u8_native]/best" \
+            --get-url "$YT_URL" 2>/dev/null | head -1)
+          
+          if [ -z "$STREAM_URL" ]; then
+            echo "ERROR: Could not extract stream URL"
+            exit 1
+          fi
+          
+          echo "Got stream URL: ${STREAM_URL:0:80}..."
+          echo "stream_url=$STREAM_URL" >> $GITHUB_OUTPUT
 
       - name: Stream to YouTube
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
-          SOURCE_URL: ${{ github.event.inputs.youtube_url }}
         run: |
-          get_stream_url() {
-            yt-dlp \
-              --no-warnings \
-              --cookies /tmp/cookies.txt \
-              --extractor-args "youtube:player_client=web" \
-              -f "best[height<=720]/bestvideo[height<=720]+bestaudio" \
-              --get-url \
-              "$SOURCE_URL" 2>/dev/null | head -1
-          }
-
+          STREAM_URL="${{ steps.get_url.outputs.stream_url }}"
+          RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+          
+          # Retry loop — yt-dlp re-fetches a fresh URL on each reconnect
+          # so the IP-lock is always valid
           while true; do
-            echo "=== Fetching fresh stream URL ==="
-            STREAM_URL=$(get_stream_url)
+            echo "$(date): Refreshing stream URL..."
+            
+            STREAM_URL=$(yt-dlp \
+              --no-warnings \
+              -f "best[height<=720][protocol=m3u8_native]/best[protocol=m3u8_native]/best" \
+              --get-url "${{ github.event.inputs.youtube_url }}" 2>/dev/null | head -1)
 
             if [ -z "$STREAM_URL" ]; then
-              echo "Failed to get stream URL, retrying in 10s..."
+              echo "Could not get URL, retrying in 10s..."
               sleep 10
               continue
             fi
 
-            echo "=== Got URL, starting FFmpeg ==="
+            echo "$(date): Starting FFmpeg..."
 
             ffmpeg -hide_banner -loglevel warning \
               -re \
               -fflags +nobuffer+discardcorrupt \
-              -flags low_delay \
               -i "$STREAM_URL" \
+              -stream_loop -1 -i "Audio01.mp3" \
+              -i "overlay.png" \
               -filter_complex "
-                [0:v]fps=30,
-                scale=1280:720,
-                drawtext=text='NASA Live':
-                  fontcolor=white:fontsize=24:
-                  x=10:y=10:
-                  box=1:boxcolor=black@0.4:boxborderw=5,
-                setpts=PTS-STARTPTS[outv]
+                [0:v]fps=30,scale=1280:720,setpts=PTS-STARTPTS[bg];
+                [2:v]scale=1280:720[fg];
+                [bg][fg]overlay=0:0:shortest=1[outv]
               " \
               -map "[outv]" \
-              -map 0:a \
-              -c:v libx264 -preset veryfast -tune zerolatency \
+              -map "1:a" \
+              -c:v libx264 \
+              -preset ultrafast \
+              -tune zerolatency \
               -pix_fmt yuv420p \
-              -b:v 2500k -maxrate 3000k -bufsize 6000k \
+              -b:v 2500k -maxrate 2500k -bufsize 5000k \
               -c:a aac -b:a 128k -ar 44100 \
               -g 60 -r 30 \
-              -f flv "rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+              -f flv "$RTMP_URL"
 
-            echo "=== FFmpeg exited, refreshing in 5s ==="
+            echo "$(date): FFmpeg exited. Reconnecting in 5s..."
             sleep 5
           done
