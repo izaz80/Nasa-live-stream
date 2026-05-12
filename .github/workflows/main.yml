@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       youtube_url:
-        description: 'NASA YouTube live URL (e.g. https://www.youtube.com/watch?v=XXX)'
+        description: 'NASA YouTube live URL'
         required: true
-        default: 'https://www.youtube.com/watch?v=uwXgcTc8oY8'
+        default: 'https://www.youtube.com/watch?v=MuHIx2q0Wjs'
 
 jobs:
   stream:
     runs-on: ubuntu-latest
-    timeout-minutes: 350  # Just under GitHub's 6hr limit
+    timeout-minutes: 350
 
     steps:
       - name: Checkout
@@ -20,53 +20,54 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg python3-pip
+          sudo apt-get install -y ffmpeg nodejs npm
           pip3 install -q yt-dlp
+
+      - name: Write cookies file
+        env:
+          YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        run: |
+          echo "$YOUTUBE_COOKIES" > cookies.txt
+          echo "Cookies written."
 
       - name: Get stream URL
         id: get_url
-        env:
-          YT_URL: 'https://www.youtube.com/watch?v=MuHIx2q0Wjs'
         run: |
-          echo "=== yt-dlp version ==="
-          yt-dlp --version
+          echo "=== Testing with cookies + node ==="
           
-          echo "=== Listing available formats ==="
-          yt-dlp --list-formats "$YT_URL" 2>&1 | head -40
-          
-          echo "=== Attempting URL extraction ==="
           STREAM_URL=$(yt-dlp \
             --no-warnings \
-            --no-check-certificate \
-            -f "best" \
-            --get-url "$YT_URL" 2>&1)
+            --cookies cookies.txt \
+            -f "best[height<=720][protocol=m3u8_native]/best[protocol=m3u8_native]/best" \
+            --get-url \
+            "${{ github.event.inputs.youtube_url }}" 2>&1)
           
-          echo "Result: $STREAM_URL"
+          echo "Raw result: ${STREAM_URL:0:120}..."
           
-          if echo "$STREAM_URL" | grep -q "http"; then
+          if echo "$STREAM_URL" | grep -q "^http"; then
             CLEAN_URL=$(echo "$STREAM_URL" | grep "^http" | head -1)
             echo "stream_url=$CLEAN_URL" >> $GITHUB_OUTPUT
             echo "SUCCESS"
           else
-            echo "FAILED - see output above for reason"
+            echo "FAILED: $STREAM_URL"
             exit 1
           fi
+
       - name: Stream to YouTube
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
-          STREAM_URL="${{ steps.get_url.outputs.stream_url }}"
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
           
-          # Retry loop — yt-dlp re-fetches a fresh URL on each reconnect
-          # so the IP-lock is always valid
           while true; do
             echo "$(date): Refreshing stream URL..."
             
             STREAM_URL=$(yt-dlp \
               --no-warnings \
+              --cookies cookies.txt \
               -f "best[height<=720][protocol=m3u8_native]/best[protocol=m3u8_native]/best" \
-              --get-url "${{ github.event.inputs.youtube_url }}" 2>/dev/null | head -1)
+              --get-url \
+              "${{ github.event.inputs.youtube_url }}" 2>/dev/null | head -1)
 
             if [ -z "$STREAM_URL" ]; then
               echo "Could not get URL, retrying in 10s..."
@@ -98,6 +99,6 @@ jobs:
               -g 60 -r 30 \
               -f flv "$RTMP_URL"
 
-            echo "$(date): FFmpeg exited. Reconnecting in 5s..."
+            echo "$(date): FFmpeg dropped. Reconnecting in 5s..."
             sleep 5
           done
