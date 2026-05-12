@@ -26,24 +26,31 @@ jobs:
       - name: Get stream URL
         id: get_url
         env:
-          YT_URL: ${{ github.event.inputs.youtube_url }}
+          YT_URL: 'https://www.youtube.com/watch?v=MuHIx2q0Wjs'
         run: |
-          echo "Fetching fresh m3u8 from GitHub's IP..."
+          echo "=== yt-dlp version ==="
+          yt-dlp --version
           
-          # Get the best m3u8 URL directly (720p or best available)
+          echo "=== Listing available formats ==="
+          yt-dlp --list-formats "$YT_URL" 2>&1 | head -40
+          
+          echo "=== Attempting URL extraction ==="
           STREAM_URL=$(yt-dlp \
             --no-warnings \
-            -f "best[height<=720][protocol=m3u8_native]/best[protocol=m3u8_native]/best" \
-            --get-url "$YT_URL" 2>/dev/null | head -1)
+            --no-check-certificate \
+            -f "best" \
+            --get-url "$YT_URL" 2>&1)
           
-          if [ -z "$STREAM_URL" ]; then
-            echo "ERROR: Could not extract stream URL"
+          echo "Result: $STREAM_URL"
+          
+          if echo "$STREAM_URL" | grep -q "http"; then
+            CLEAN_URL=$(echo "$STREAM_URL" | grep "^http" | head -1)
+            echo "stream_url=$CLEAN_URL" >> $GITHUB_OUTPUT
+            echo "SUCCESS"
+          else
+            echo "FAILED - see output above for reason"
             exit 1
           fi
-          
-          echo "Got stream URL: ${STREAM_URL:0:80}..."
-          echo "stream_url=$STREAM_URL" >> $GITHUB_OUTPUT
-
       - name: Stream to YouTube
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
