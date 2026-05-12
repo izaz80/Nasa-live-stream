@@ -29,15 +29,15 @@ jobs:
 
       - name: Install PO Token provider
         run: |
-          # Install the bgutil PO token plugin for yt-dlp
+          # Install yt-dlp plugin interface
           pip3 install -q yt-dlp-get-pot
 
-          # Install the bgutil provider (generates PO tokens via Node.js)
-          npm install -g bgutil-ytdlp-pot-provider
+          # Correct package name (was renamed)
+          npm install -g @imputnet/bgutil-ytdlp-pot-provider
 
-          echo "=== Verifying plugin ==="
-          yt-dlp --verbose --list-extractors 2>&1 | grep -i "pot\|token" || echo "Plugin check done"
-
+          echo "=== Verify ==="
+          npm list -g --depth=0
+          
       - name: Test stream extraction
         id: get_url
         run: |
