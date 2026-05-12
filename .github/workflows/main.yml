@@ -20,69 +20,41 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg nodejs npm curl
-          
-          # Install latest yt-dlp binary directly (more up to date than pip)
-          sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
-          sudo chmod a+rx /usr/local/bin/yt-dlp
-          yt-dlp --version
+          sudo apt-get install -y ffmpeg python3-pip
+          pip3 install streamlink
+          streamlink --version
 
-      - name: Install PO Token provider
+      - name: Test extraction
         run: |
-          # Install yt-dlp plugin interface
-          pip3 install -q yt-dlp-get-pot
-
-          # Correct package name (was renamed)
-          npm install -g @imputnet/bgutil-ytdlp-pot-provider
-
-          echo "=== Verify ==="
-          npm list -g --depth=0
-          
-      - name: Test stream extraction
-        id: get_url
-        run: |
-          echo "=== Attempting extraction with PO Token ==="
-          
-          STREAM_URL=$(yt-dlp \
-            --no-warnings \
-            --extractor-args "youtube:player_client=web;po_token=web+${POT}" \
-            -f "best[height<=720][protocol=m3u8_native]/best[protocol=m3u8_native]/best" \
-            --get-url \
-            "${{ github.event.inputs.youtube_url }}" 2>&1)
-
-          echo "Raw result: ${STREAM_URL:0:150}..."
-
-          if echo "$STREAM_URL" | grep -q "^http"; then
-            CLEAN_URL=$(echo "$STREAM_URL" | grep "^http" | head -1)
-            echo "stream_url=$CLEAN_URL" >> $GITHUB_OUTPUT
-            echo "SUCCESS"
-          else
-            echo "FAILED: $STREAM_URL"
-            exit 1
-          fi
+          echo "=== Testing streamlink extraction ==="
+          streamlink \
+            --loglevel debug \
+            --stream-url \
+            "${{ github.event.inputs.youtube_url }}" \
+            best 2>&1 | tail -20
 
       - name: Stream to YouTube
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
         run: |
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+          YT_URL="${{ github.event.inputs.youtube_url }}"
 
           while true; do
-            echo "$(date): Refreshing stream URL..."
+            echo "$(date): Getting stream URL via streamlink..."
 
-            STREAM_URL=$(yt-dlp \
-              --no-warnings \
-              -f "best[height<=720][protocol=m3u8_native]/best[protocol=m3u8_native]/best" \
-              --get-url \
-              "${{ github.event.inputs.youtube_url }}" 2>/dev/null | head -1)
+            STREAM_URL=$(streamlink \
+              --stream-url \
+              "$YT_URL" \
+              best 2>/dev/null)
 
             if [ -z "$STREAM_URL" ]; then
-              echo "Could not get URL, retrying in 10s..."
-              sleep 10
+              echo "streamlink failed, retrying in 15s..."
+              sleep 15
               continue
             fi
 
-            echo "$(date): Starting FFmpeg..."
+            echo "$(date): Got URL, starting FFmpeg..."
 
             ffmpeg -hide_banner -loglevel warning \
               -re \
