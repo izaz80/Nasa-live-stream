@@ -2,11 +2,6 @@ name: NASA Live Restream
 
 on:
   workflow_dispatch:
-    inputs:
-      youtube_url:
-        description: 'NASA YouTube live URL'
-        required: true
-        default: 'https://www.youtube.com/watch?v=MuHIx2q0Wjs'
 
 jobs:
   stream:
@@ -20,36 +15,31 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg python3-pip
-          pip3 install streamlink
-          streamlink --version
-
-      - name: Test extraction
-        run: |
-          echo "=== Testing streamlink extraction ==="
-          streamlink \
-            --loglevel debug \
-            --stream-url \
-            "${{ github.event.inputs.youtube_url }}" \
-            best 2>&1 | tail -20
+          sudo apt-get install -y ffmpeg
+          pip3 install -q yt-dlp
 
       - name: Stream to YouTube
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
+          GIST_ID: ${{ secrets.GIST_ID }}
+          GITHUB_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
           RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
-          YT_URL="${{ github.event.inputs.youtube_url }}"
 
           while true; do
-            echo "$(date): Getting stream URL via streamlink..."
+            echo "$(date): Fetching URL from Gist..."
 
-            STREAM_URL=$(streamlink \
-              --stream-url \
-              "$YT_URL" \
-              best 2>/dev/null)
+            STREAM_URL=$(curl -s \
+              -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/gists/$GIST_ID" \
+              | python3 -c "
+import sys,json
+data=json.load(sys.stdin)
+print(data['files']['stream_url.txt']['content'].strip())
+")
 
             if [ -z "$STREAM_URL" ]; then
-              echo "streamlink failed, retrying in 15s..."
+              echo "Could not read Gist, retrying in 15s..."
               sleep 15
               continue
             fi
@@ -63,9 +53,9 @@ jobs:
               -stream_loop -1 -i "Audio01.mp3" \
               -i "overlay.png" \
               -filter_complex "
-                [0:v]fps=30,scale=1280:720,setpts=PTS-STARTPTS[bg];
-                [2:v]scale=1280:720[fg];
-                [bg][fg]overlay=0:0:shortest=1[outv]
+                [0:v]scale=1280:720,fps=24[bg];
+                [2:v]scale=200:-1[wm];
+                [bg][wm]overlay=W-w-10:10[outv]
               " \
               -map "[outv]" \
               -map "1:a" \
@@ -73,11 +63,11 @@ jobs:
               -preset ultrafast \
               -tune zerolatency \
               -pix_fmt yuv420p \
-              -b:v 2500k -maxrate 2500k -bufsize 5000k \
-              -c:a aac -b:a 128k -ar 44100 \
-              -g 60 -r 30 \
+              -b:v 1500k -maxrate 1500k -bufsize 3000k \
+              -c:a aac -b:a 96k -ar 44100 \
+              -g 48 -r 24 \
               -f flv "$RTMP_URL"
 
-            echo "$(date): FFmpeg dropped. Reconnecting in 5s..."
+            echo "$(date): FFmpeg dropped. Re-fetching URL in 5s..."
             sleep 5
           done
