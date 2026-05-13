@@ -15,48 +15,66 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y ffmpeg
+          sudo apt-get install -y ffmpeg python3
           pip3 install -q yt-dlp
+
+      - name: Verify assets exist
+        run: |
+          echo "Checking repo assets..."
+          ls -lh Audio01.mp3 overlay.png || {
+            echo "ERROR: Audio01.mp3 or overlay.png missing from repo!"
+            exit 1
+          }
 
       - name: Stream to YouTube
         env:
           STREAM_KEY: ${{ secrets.YOUTUBE_STREAM_KEY }}
           GIST_ID: ${{ secrets.GIST_ID }}
-          GITHUB_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
-          RTMP_URL="rtmp://a.rtmp.youtube.com/live2/$STREAM_KEY"
+          RTMP_URL="rtmp://a.rtmp.youtube.com/live2/${STREAM_KEY}"
 
           while true; do
             echo "$(date): Fetching URL from Gist..."
 
-            STREAM_URL=$(curl -s \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/gists/$GIST_ID" \
-              | python3 -c "
-import sys,json
-data=json.load(sys.stdin)
-print(data['files']['stream_url.txt']['content'].strip())
+            GIST_RESPONSE=$(curl -s \
+              -H "Authorization: token ${GIST_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/gists/${GIST_ID}")
+
+            # Debug: show first 200 chars of response
+            echo "Gist response preview: ${GIST_RESPONSE:0:200}"
+
+            STREAM_URL=$(echo "$GIST_RESPONSE" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    url = data['files']['stream_url.txt']['content'].strip()
+    print(url)
+except Exception as e:
+    print('', end='')
+    import sys; sys.stderr.write(str(e) + '\n')
 ")
 
-            if [ -z "$STREAM_URL" ]; then
-              echo "Could not read Gist, retrying in 15s..."
+            if [ -z "$STREAM_URL" ] || [[ "$STREAM_URL" != http* ]]; then
+              echo "$(date): Invalid or empty URL from Gist. Retrying in 15s..."
               sleep 15
               continue
             fi
 
-            echo "$(date): Got URL, starting FFmpeg..."
+            echo "$(date): Got URL — ${STREAM_URL:0:80}..."
+            echo "$(date): Starting FFmpeg..."
 
             ffmpeg -hide_banner -loglevel warning \
               -re \
               -fflags +nobuffer+discardcorrupt \
-              -i "$STREAM_URL" \
+              -i "${STREAM_URL}" \
               -stream_loop -1 -i "Audio01.mp3" \
               -i "overlay.png" \
-              -filter_complex "
-                [0:v]scale=1280:720,fps=24[bg];
-                [2:v]scale=200:-1[wm];
-                [bg][wm]overlay=W-w-10:10[outv]
-              " \
+              -filter_complex \
+                "[0:v]scale=1280:720,fps=24[bg]; \
+                 [2:v]scale=200:-1[wm]; \
+                 [bg][wm]overlay=W-w-10:10[outv]" \
               -map "[outv]" \
               -map "1:a" \
               -c:v libx264 \
@@ -66,8 +84,9 @@ print(data['files']['stream_url.txt']['content'].strip())
               -b:v 1500k -maxrate 1500k -bufsize 3000k \
               -c:a aac -b:a 96k -ar 44100 \
               -g 48 -r 24 \
-              -f flv "$RTMP_URL"
+              -f flv "${RTMP_URL}"
 
-            echo "$(date): FFmpeg dropped. Re-fetching URL in 5s..."
+            EXIT_CODE=$?
+            echo "$(date): FFmpeg exited with code $EXIT_CODE. Reconnecting in 5s..."
             sleep 5
           done
